@@ -1,4 +1,5 @@
 import { query } from '../config/db.js';
+import { sendEnquiryEmail, sendThankYouEmail } from '../config/email.js';
 
 export async function getEnquiries(req, res) {
   try {
@@ -48,9 +49,22 @@ export async function createEnquiry(req, res) {
       ]
     );
 
+    const enquiry = result.rows[0];
+
+    // Send email notification via SMTP
+    try {
+      await sendEnquiryEmail(enquiry);
+      console.log(`Enquiry email sent for submission ID: ${enquiry.id}`);
+      
+      // Send thank you email to the user
+      await sendThankYouEmail(email, contact_person, 'enquiry');
+    } catch (emailErr) {
+      console.error('Failed to send enquiry/thank-you email:', emailErr.message);
+    }
+
     return res.status(201).json({
       message: 'Enquiry submitted successfully.',
-      enquiry: result.rows[0],
+      enquiry: enquiry,
     });
   } catch (err) {
     console.error('Create enquiry error:', err);

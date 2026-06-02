@@ -1,4 +1,5 @@
 import { query } from '../config/db.js';
+import { sendContactEmail, sendThankYouEmail } from '../config/email.js';
 
 export async function getContactSubmissions(req, res) {
   try {
@@ -11,22 +12,44 @@ export async function getContactSubmissions(req, res) {
 }
 
 export async function createContactSubmission(req, res) {
+  console.log('--- NEW CONTACT SUBMISSION REQUEST ---');
+  console.log('Body:', req.body);
   const { name, email, phone, message } = req.body;
 
   if (!name || !email || !phone) {
+    console.warn('Missing required fields:', { name, email, phone });
     return res.status(400).json({ message: 'Name, email, and phone are required.' });
   }
 
   try {
+    console.log('Inserting into DB...');
     const result = await query(
       `INSERT INTO contact_submissions (name, email, phone, message)
        VALUES ($1, $2, $3, $4)
        RETURNING *`,
       [name, email, phone, message || '']
     );
-    return res.status(201).json({ message: 'Contact submission received successfully.', submission: result.rows[0] });
+
+    const submission = result.rows[0];
+    console.log('Saved to DB with ID:', submission.id);
+
+    // Send email notification via SMTP
+    console.log('Starting email process...');
+    try {
+      console.log(`Processing emails for: ${email}`);
+      await sendContactEmail(submission);
+      console.log(`Contact notification email sent to Admin`);
+      
+      // Send thank you email to the user
+      await sendThankYouEmail(email, name, 'contact');
+      console.log(`Thank you email sent to user: ${email}`);
+    } catch (emailErr) {
+      console.error('❌ EMAIL SYSTEM ERROR:', emailErr);
+    }
+
+    return res.status(201).json({ message: 'Contact submission received successfully.', submission });
   } catch (err) {
-    console.error('Create contact submission error:', err);
+    console.error('❌ DB ERROR:', err);
     return res.status(500).json({ message: 'Internal server error.' });
   }
 }
